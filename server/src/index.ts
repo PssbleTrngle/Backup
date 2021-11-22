@@ -50,7 +50,11 @@ app.post(
 
          const archive = archiver('zip')
 
-         archive.on('error', next)
+         archive.on('error', e => {
+            console.log('Archive error:')
+            archive.finalize()
+            next(e)
+         })
 
          if (config.saveLocal) {
             mkdirSync('temp', { recursive: true })
@@ -93,7 +97,9 @@ app.post(
             console.groupEnd()
          })
 
-         archive.finalize()
+         console.log('Archived all files')
+
+         await archive.finalize()
       } catch (e) {
          next(e)
       } finally {

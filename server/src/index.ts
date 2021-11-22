@@ -98,8 +98,11 @@ app.post(
          })
 
          console.log('Archived all files')
-
          await archive.finalize()
+         console.log('Closed archive')
+
+         const { clients } = wss.getWss()
+         clients.forEach(c => c.close())
       } catch (e) {
          next(e)
       } finally {

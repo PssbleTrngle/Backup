@@ -18,3 +18,4 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           image_name: ${{ secrets.DOCKER_USERNAME }}/backup-server
+          context: server

@@ -11,6 +11,11 @@ const app = express()
 app.use(bodyparser.json())
 app.use(bodyparser.urlencoded({ extended: true }))
 
+app.use((req, res, next) => {
+   if (config.password === req.headers.authorization) next()
+   else res.status(400).json({ message: 'Invalid password' })
+})
+
 app.post(
    '/',
    celebrate(

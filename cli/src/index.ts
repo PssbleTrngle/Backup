@@ -1,11 +1,13 @@
 import arg from 'arg'
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 import chalk from 'chalk'
 import { createWriteStream, mkdirSync } from 'fs'
 import { DateTime } from 'luxon'
 import open from 'open'
 import { join } from 'path'
 import { dirname } from 'path/posix'
+import prompt from 'prompt'
+import { Stream } from 'stream'
 import getConfig, { openConfig } from './config'
 
 async function run() {
@@ -20,7 +22,17 @@ async function run() {
    if (args['--config']) return openConfig()
 
    const config = await getConfig()
-   const request = axios.create({ baseURL: config.server, responseType: 'stream' })
+
+   prompt.start({ message: 'Input' })
+   const { password } = await prompt.get([{ name: 'password', required: true, allowEmpty: false, hidden: true } as any])
+
+   const request = axios.create({
+      baseURL: config.server,
+      responseType: 'stream',
+      headers: {
+         Authorization: password as string,
+      },
+   })
 
    console.log(chalk`Requesting backup from {underline ${config.server}}...`)
    const { data } = await request.post('/', { paths: config.paths })
@@ -37,4 +49,24 @@ async function run() {
    if (args['--open']) await open(output)
 }
 
-run().catch(e => console.error(chalk.red(e.message)))
+function isAxiosError(e: unknown): e is AxiosError {
+   return (e as AxiosError).isAxiosError
+}
+
+function streamToString(stream: Stream) {
+   const chunks: Buffer[] = []
+   return new Promise<string>((resolve, reject) => {
+      stream.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      stream.on('error', err => reject(err))
+      stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+   })
+}
+
+run().catch(async e => {
+   if (isAxiosError(e)) {
+      const response = JSON.parse(await streamToString(e.response?.data))
+      console.error(chalk.red(response.message || e.message))
+   } else {
+      console.error(chalk.red(e.message))
+   }
+})

@@ -1,0 +1,25 @@
+{
+   "name": "create-backup",
+   "scripts": {
+      "dev": "ts-node src/index.ts",
+      "build": "tsc",
+      "start": "node build/index.js",
+      "lint": "eslint --fix src/**/*.{js,ts}",
+      "format": "prettier --write src/**/*.{js,ts}"
+   },
+   "dependencies": {
+      "arg": "^5.0.1",
+      "axios": "^0.24.0",
+      "chalk": "^4.1.2",
+      "luxon": "^2.1.1",
+      "open": "^8.4.0",
+      "yaml": "^1.10.2"
+   },
+   "devDependencies": {
+      "@types/chalk": "^2.2.0",
+      "@types/luxon": "^2.0.7",
+      "@types/node": "^16.11.9",
+      "ts-node": "^10.4.0",
+      "typescript": "^4.5.2"
+   }
+}

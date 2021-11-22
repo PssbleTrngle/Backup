@@ -38,6 +38,7 @@ app.post(
    celebrate(
       {
          body: {
+            level: Joi.number().optional(),
             paths: Joi.array().items(Joi.string()).required(),
          },
       },
@@ -48,13 +49,14 @@ app.post(
 
       try {
          const paths = req.body.paths as string[]
+         const level = req.body.level as number
          const matches = paths.map(pattern => glob.sync(pattern, { cwd: config.source }))
          console.log(`Found ${matches.length} matching paths`)
 
          const timestamp = Date.now()
          const zipName = `backup-${timestamp}.zip`
 
-         const archive = archiver('zip')
+         const archive = archiver('zip', { zlib: { level } })
 
          archive.on('error', e => {
             console.log('Archive error:')

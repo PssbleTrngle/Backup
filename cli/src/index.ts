@@ -87,7 +87,7 @@ async function run() {
    await new Promise<void>(res => ws.on('open', res))
 
    console.log(chalk`Requesting backup from {underline ${config.server}}...`)
-   const { data } = await request.post('/', { paths: config.paths })
+   const { data } = await request.post('/', config)
 
    const timestamp = DateTime.now().toFormat('yyyy-MM-dd HH-mm-ss-S')
    const output = args['--to'] || join(config.output, `backup-${timestamp}.zip`)

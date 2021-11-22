@@ -9,6 +9,7 @@ const configPath = resolve(homedir(), '.config/backup/config.yml')
 export interface Config {
    server: string
    output: string
+   level?: number
    paths: string[]
 }
 

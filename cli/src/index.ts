@@ -49,12 +49,12 @@ async function run() {
    }
 
    const request = axios.create({
-      baseURL: `http://${config.server}`,
+      baseURL: `https://${config.server}`,
       responseType: 'stream',
       headers,
    })
 
-   const ws = new WebSocket(`ws://${config.server}`, { headers })
+   const ws = new WebSocket(`wss://${config.server}`, { headers })
 
    ws.on('error', e => console.error(e))
 

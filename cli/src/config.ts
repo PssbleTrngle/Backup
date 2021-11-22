@@ -7,17 +7,17 @@ import yaml from 'yaml'
 const configPath = resolve(homedir(), '.config/backup/config.yml')
 
 export interface Config {
-   server?: string
+   server: string
    output: string
    paths: string[]
 }
 
-const defaultConfig: Config = {
+const defaultConfig = {
    paths: [],
    output: resolve(homedir(), 'downloads'),
 }
 
-async function getConfig() {
+async function getConfig(): Promise<Config> {
    if (existsSync(configPath)) {
       const content = readFileSync(configPath).toString()
       const parsed = yaml.parse(content)
@@ -29,7 +29,7 @@ async function getConfig() {
    } else {
       mkdirSync(dirname(configPath), { recursive: true })
       writeFileSync(configPath, yaml.stringify(defaultConfig))
-      return defaultConfig
+      return getConfig()
    }
 }
 

@@ -2,18 +2,29 @@ import archiver from 'archiver'
 import bodyparser from 'body-parser'
 import { celebrate, isCelebrateError, Joi } from 'celebrate'
 import express, { NextFunction, Request, Response } from 'express'
+import ws from 'express-ws'
 import { createWriteStream, mkdirSync, statSync } from 'fs'
 import glob from 'glob'
 import { join } from 'path'
 import config from './config'
 
-const app = express()
+const wss = ws(express())
+const { app } = wss
+
 app.use(bodyparser.json())
 app.use(bodyparser.urlencoded({ extended: true }))
 
 app.use((req, res, next) => {
    if (config.password === req.headers.authorization) next()
    else res.status(400).json({ message: 'Invalid password' })
+})
+
+app.ws('/', client => {
+   const { clients } = wss.getWss()
+   client.ping()
+   clients.forEach(c => {
+      if (c !== client) c.close()
+   })
 })
 
 app.post(
@@ -31,7 +42,7 @@ app.post(
 
       try {
          const paths = req.body.paths as string[]
-         const matches = paths.map(pattern => glob.sync(pattern, { cwd: config.source })).reduce((a, b) => [...a, ...b])
+         const matches = paths.map(pattern => glob.sync(pattern, { cwd: config.source }))
          console.log(`Found ${matches.length} matching paths`)
 
          const timestamp = Date.now()
@@ -57,12 +68,29 @@ app.post(
 
          archive.on('finish', () => console.log(`Backup finished with ${archive.pointer()} bytes`))
 
-         matches.forEach(match => {
-            const path = join(config.source, match)
-            const info = statSync(path)
-            if (info.isDirectory()) archive.directory(path, match)
-            else archive.file(path, { name: match })
-            console.log(`Added ${match}`)
+         const total = matches.reduce((t, a) => t + a.length, 0)
+         let index = 0
+         matches.forEach((matches, i) => {
+            const pattern = paths[i]
+            console.group(`Processing pattern '${pattern}' with ${matches.length} matches`)
+
+            matches.forEach(match => {
+               const path = join(config.source, match)
+               const info = statSync(path)
+
+               const startedAt = Date.now()
+               const { clients } = wss.getWss()
+               const message = JSON.stringify({ file: match, pattern, total, index, startedAt })
+               clients.forEach(client => client.send(message))
+
+               if (info.isDirectory()) archive.directory(path, match)
+               else archive.file(path, { name: match })
+               index++
+
+               console.log(`Added ${match}`)
+            })
+
+            console.groupEnd()
          })
 
          archive.finalize()
@@ -73,6 +101,10 @@ app.post(
       }
    }
 )
+
+app.use((_req, res) => {
+   res.status(404).json({ message: 'Not Found' })
+})
 
 app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
    if (isCelebrateError(err)) {

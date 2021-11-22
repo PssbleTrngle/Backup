@@ -5,16 +5,25 @@ import { createWriteStream, mkdirSync } from 'fs'
 import { DateTime } from 'luxon'
 import open from 'open'
 import { join } from 'path'
-import { dirname } from 'path/posix'
+import { basename, dirname } from 'path/posix'
 import prompt from 'prompt'
 import { Stream } from 'stream'
+import { WebSocket } from 'ws'
 import getConfig, { openConfig } from './config'
+
+function replaceLine(message: string, newLine = false) {
+   process.stdout.clearLine(0)
+   process.stdout.cursorTo(0)
+   if (newLine) console.log(message)
+   else process.stdout.write(message)
+}
 
 async function run() {
    const args = arg({
       '--config': Boolean,
       '--open': Boolean,
       '--to': String,
+      '--password': String,
       '-o': '--open',
       '-c': '--config',
    })
@@ -23,16 +32,42 @@ async function run() {
 
    const config = await getConfig()
 
-   prompt.start({ message: 'Input' })
-   const { password } = await prompt.get([{ name: 'password', required: true, allowEmpty: false, hidden: true } as any])
+   const getPassword = async () => {
+      if (args['--password']) {
+         console.warn(chalk`{yellow Passing the password in the command is not recommended}`)
+         return args['--password']
+      }
+      prompt.start({ message: 'Input' })
+      const { password } = await prompt.get([
+         { name: 'password', required: true, allowEmpty: false, hidden: true } as any,
+      ])
+      return password as string
+   }
+
+   const headers = {
+      Authorization: await getPassword(),
+   }
 
    const request = axios.create({
-      baseURL: config.server,
+      baseURL: `http://${config.server}`,
       responseType: 'stream',
-      headers: {
-         Authorization: password as string,
-      },
+      headers,
    })
+
+   const ws = new WebSocket(`ws://${config.server}`, { headers })
+
+   ws.on('error', e => console.error(e))
+
+   ws.on('message', data => {
+      const { file, pattern, total, index, startedAt } = JSON.parse(data.toString())
+      const name = basename(file)
+      const base = Math.ceil(Math.log10(total))
+      const progress = `${`${index + 1}`.padStart(base)}/${total}`
+      const bar  = '\u2588'.repeat(index / total * 20).padEnd(20, '\u2591')
+      replaceLine(chalk`${progress} ${bar} {underline ${name}}`)
+   })
+
+   await new Promise<void>(res => ws.on('open', res))
 
    console.log(chalk`Requesting backup from {underline ${config.server}}...`)
    const { data } = await request.post('/', { paths: config.paths })
@@ -45,7 +80,8 @@ async function run() {
 
    await new Promise<void>(res => stream.on('close', res))
 
-   console.log(chalk`{green Backup successfully saved to {underline ${output}}}`)
+   ws.close()
+   replaceLine(chalk`{green Backup successfully saved to {underline ${output}}}`, true)
    if (args['--open']) await open(output)
 }
 

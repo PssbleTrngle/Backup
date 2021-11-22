@@ -5,7 +5,7 @@ import express, { NextFunction, Request, Response } from 'express'
 import ws from 'express-ws'
 import { createWriteStream, mkdirSync, statSync } from 'fs'
 import glob from 'glob'
-import { join } from 'path'
+import { basename, join } from 'path'
 import config from './config'
 
 const wss = ws(express())
@@ -26,6 +26,12 @@ app.ws('/', client => {
       if (c !== client) c.close()
    })
 })
+
+function broadcast(message: Record<string, unknown>) {
+   const { clients } = wss.getWss()
+   message.timestamp = Date.now()
+   clients.forEach(client => client.send(JSON.stringify(message)))
+}
 
 app.post(
    '/',
@@ -82,10 +88,8 @@ app.post(
                const path = join(config.source, match)
                const info = statSync(path)
 
-               const startedAt = Date.now()
-               const { clients } = wss.getWss()
-               const message = JSON.stringify({ file: match, pattern, total, index, startedAt })
-               clients.forEach(client => client.send(message))
+               const progress = { total, index }
+               broadcast({ message: basename(match), match, pattern, progress })
 
                if (info.isDirectory()) archive.directory(path, match)
                else archive.file(path, { name: match })
@@ -95,6 +99,18 @@ app.post(
             })
 
             console.groupEnd()
+         })
+
+         const progress = { total, index: 0 }
+         broadcast({ message: 'Finalizing archive', progress })
+
+         archive.on('progress', ({ entries, fs }) => {
+            const progress = {
+               total: entries.total,
+               index: entries.processed,
+               size: fs.processedBytes,
+            }
+            broadcast({ message: 'Finalizing archive', progress })
          })
 
          console.log('Archived all files')

@@ -17,9 +17,9 @@ const defaultConfig = {
    output: resolve(homedir(), 'downloads'),
 }
 
-async function getConfig(): Promise<Config> {
-   if (existsSync(configPath)) {
-      const content = readFileSync(configPath).toString()
+async function getConfig(path = configPath): Promise<Config> {
+   if (existsSync(path)) {
+      const content = readFileSync(path).toString()
       const parsed = yaml.parse(content)
       const config: Config = { ...defaultConfig, ...parsed }
 
@@ -27,8 +27,8 @@ async function getConfig(): Promise<Config> {
 
       return config
    } else {
-      mkdirSync(dirname(configPath), { recursive: true })
-      writeFileSync(configPath, yaml.stringify(defaultConfig))
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, yaml.stringify(defaultConfig))
       return getConfig()
    }
 }

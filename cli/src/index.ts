@@ -1,11 +1,12 @@
 import arg from 'arg'
 import axios, { AxiosError } from 'axios'
 import chalk from 'chalk'
-import { createWriteStream, mkdirSync } from 'fs'
+import { createWriteStream, mkdirSync, statSync } from 'fs'
 import { DateTime } from 'luxon'
 import open from 'open'
 import { join } from 'path'
-import { basename, dirname } from 'path/posix'
+import { dirname } from 'path/posix'
+import bytes from 'pretty-bytes'
 import prompt from 'prompt'
 import { Stream } from 'stream'
 import { WebSocket } from 'ws'
@@ -18,9 +19,20 @@ function replaceLine(message: string, newLine = false) {
    else process.stdout.write(message)
 }
 
+interface Message {
+   message?: string
+   timestamp: number
+   progress: {
+      total: number
+      index?: number
+      size?: number
+   }
+}
+
 async function run() {
    const args = arg({
-      '--config': Boolean,
+      '--config': String,
+      '--edit-config': Boolean,
       '--open': Boolean,
       '--to': String,
       '--password': String,
@@ -28,9 +40,9 @@ async function run() {
       '-c': '--config',
    })
 
-   if (args['--config']) return openConfig()
+   if (args['--edit-config']) return openConfig()
 
-   const config = await getConfig()
+   const config = await getConfig(args['--config'])
 
    const getPassword = async () => {
       if (args['--password']) {
@@ -48,23 +60,28 @@ async function run() {
       Authorization: await getPassword(),
    }
 
+   const https = config.server.startsWith('https://')
+   if (!https) console.warn(chalk`{yellow Using http is not recommended}`)
+
    const request = axios.create({
-      baseURL: `https://${config.server}`,
+      baseURL: config.server,
       responseType: 'stream',
       headers,
    })
 
-   const ws = new WebSocket(`wss://${config.server}`, { headers })
+   const ws = new WebSocket(config.server.replace('http', 'ws'), { headers })
 
    ws.on('error', e => console.error(e))
 
    ws.on('message', data => {
-      const { file, pattern, total, index, startedAt } = JSON.parse(data.toString())
-      const name = basename(file)
+      const { message, progress } = JSON.parse(data.toString()) as Message
+      const { total, index, size } = progress
       const base = Math.ceil(Math.log10(total))
-      const progress = `${`${index + 1}`.padStart(base)}/${total}`
-      const bar  = '\u2588'.repeat(index / total * 20).padEnd(20, '\u2591')
-      replaceLine(chalk`${progress} ${bar} {underline ${name}}`)
+      const counter = index ? `${`${index + 1}`.padStart(base)}/${total}` : 'done'.padStart(base + 2).padEnd(base * 2)
+      const bar = '\u2588'.repeat(((index ?? total) / total) * 20).padEnd(20, '\u2591')
+      let line = chalk`${counter} {gray ${bar}} ${message}`
+      if (size) line += chalk` {gray (${bytes(size)})}`
+      replaceLine(line)
    })
 
    await new Promise<void>(res => ws.on('open', res))
@@ -79,9 +96,11 @@ async function run() {
    data.pipe(stream)
 
    await new Promise<void>(res => stream.on('close', res))
-
    ws.close()
-   replaceLine(chalk`{green Backup successfully saved to {underline ${output}}}`, true)
+
+   const { size } = statSync(output)
+
+   replaceLine(chalk`{green Backup successfully saved to {underline ${output}}} (${bytes(size)})`, true)
    if (args['--open']) await open(output)
 }
 

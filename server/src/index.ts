@@ -38,7 +38,7 @@ app.post(
    celebrate(
       {
          body: {
-            level: Joi.number().optional(),
+            level: Joi.number().min(1).max(9).optional(),
             paths: Joi.array().items(Joi.string()).required(),
          },
       },

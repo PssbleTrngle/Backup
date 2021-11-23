@@ -4,13 +4,13 @@ import chalk from 'chalk'
 import { createWriteStream, mkdirSync, statSync } from 'fs'
 import { DateTime } from 'luxon'
 import open from 'open'
-import { join } from 'path'
-import { dirname } from 'path/posix'
+import { dirname, extname, join } from 'path'
 import bytes from 'pretty-bytes'
 import prompt from 'prompt'
 import { Stream } from 'stream'
 import { WebSocket } from 'ws'
-import getConfig, { openConfig } from './config'
+import yaml from 'yaml'
+import getConfig, { Config, openConfig } from './config'
 
 function replaceLine(message: string, newLine = false) {
    process.stdout.clearLine(0)
@@ -28,33 +28,39 @@ interface Message {
       size?: number
    }
 }
+const args = arg({
+   '--config': String,
+   '--edit-config': Boolean,
+   '--get-config': Boolean,
+   '--open': Boolean,
+   '--to': String,
+   '--password': String,
+   '-o': '--open',
+   '-c': '--config',
+})
+
+const getPassword = async () => {
+   if (args['--password']) {
+      console.warn(chalk`{yellow Passing the password in the command is not recommended}`)
+      return args['--password']
+   }
+   prompt.start({ message: 'Input' })
+   const { password } = await prompt.get([{ name: 'password', required: true, allowEmpty: false, hidden: true } as any])
+   return password as string
+}
+
+const getOutput = (config: Config) => {
+   const to = args['--to'] ?? config.output
+   if (extname(to) !== '') return to
+   const timestamp = DateTime.now().toFormat('yyyy-MM-dd HH-mm-ss-S')
+   return join(to, `backup-${timestamp}.zip`)
+}
 
 async function run() {
-   const args = arg({
-      '--config': String,
-      '--edit-config': Boolean,
-      '--open': Boolean,
-      '--to': String,
-      '--password': String,
-      '-o': '--open',
-      '-c': '--config',
-   })
+   if (args['--edit-config']) return openConfig(args['--config'])
 
-   if (args['--edit-config']) return openConfig()
-
-   const config = await getConfig(args['--config'])
-
-   const getPassword = async () => {
-      if (args['--password']) {
-         console.warn(chalk`{yellow Passing the password in the command is not recommended}`)
-         return args['--password']
-      }
-      prompt.start({ message: 'Input' })
-      const { password } = await prompt.get([
-         { name: 'password', required: true, allowEmpty: false, hidden: true } as any,
-      ])
-      return password as string
-   }
+   const config = getConfig(args['--config'])
+   if (args['--get-config']) return console.log(chalk.bgGray(yaml.stringify(config)))
 
    const headers = {
       Authorization: await getPassword(),
@@ -89,8 +95,7 @@ async function run() {
    console.log(chalk`Requesting backup from {underline ${config.server}}...`)
    const { data } = await request.post('/', config)
 
-   const timestamp = DateTime.now().toFormat('yyyy-MM-dd HH-mm-ss-S')
-   const output = args['--to'] || join(config.output, `backup-${timestamp}.zip`)
+   const output = getOutput(config)
    mkdirSync(dirname(output), { recursive: true })
    const stream = createWriteStream(output)
    data.pipe(stream)
